@@ -38,10 +38,12 @@ type DailyLog = {
 };
 
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/hammah12/ali-hub-data/main";
+const ARCHIVE_KEY = "ali-hub-archived";
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"dashboard" | "queue" | "reports" | "logs">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "queue" | "archive" | "reports" | "logs">("dashboard");
   const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [archivedIds, setArchivedIds] = useState<Set<string>>(new Set());
   const [reports, setReports] = useState<Report[]>([]);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
@@ -51,8 +53,32 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Load archived IDs from localStorage
+    const saved = localStorage.getItem(ARCHIVE_KEY);
+    if (saved) {
+      setArchivedIds(new Set(JSON.parse(saved)));
+    }
     loadData();
   }, []);
+
+  function saveArchivedIds(ids: Set<string>) {
+    localStorage.setItem(ARCHIVE_KEY, JSON.stringify([...ids]));
+    setArchivedIds(ids);
+  }
+
+  function archiveItem(id: string) {
+    const newIds = new Set(archivedIds);
+    newIds.add(id);
+    saveArchivedIds(newIds);
+    setSelectedItem(null);
+  }
+
+  function restoreItem(id: string) {
+    const newIds = new Set(archivedIds);
+    newIds.delete(id);
+    saveArchivedIds(newIds);
+    setSelectedItem(null);
+  }
 
   async function loadData() {
     setLoading(true);
@@ -104,12 +130,17 @@ export default function Home() {
     }
   }
 
-  const filteredItems = queueItems.filter((item) => {
+  // Active items (not archived)
+  const activeItems = queueItems.filter((item) => !archivedIds.has(item.id));
+  const archivedItems = queueItems.filter((item) => archivedIds.has(item.id));
+
+  const filteredItems = activeItems.filter((item) => {
     if (filter === "all") return true;
     return item.type === filter;
   });
 
-  const pendingCount = queueItems.filter((i) => i.status === "pending").length;
+  const pendingCount = activeItems.length;
+  const archivedCount = archivedItems.length;
 
   const typeConfig: Record<string, { icon: string; color: string; bg: string }> = {
     recipe: { icon: "🍲", color: "text-orange-600", bg: "bg-orange-50 border-orange-200" },
@@ -123,6 +154,8 @@ export default function Home() {
     approved: { color: "text-green-700", bg: "bg-green-100" },
     archived: { color: "text-gray-600", bg: "bg-gray-100" },
   };
+
+  const isArchived = selectedItem ? archivedIds.has(selectedItem.id) : false;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
@@ -147,14 +180,15 @@ export default function Home() {
           <div className="flex">
             {[
               { id: "dashboard", icon: "📊", label: "Dashboard" },
-              { id: "queue", icon: "📋", label: "Queue" },
+              { id: "queue", icon: "📋", label: "Queue", badge: pendingCount },
+              { id: "archive", icon: "📦", label: "Archive", badge: archivedCount },
               { id: "reports", icon: "📄", label: "Reports" },
               { id: "logs", icon: "📝", label: "Logs" },
             ].map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                className={`flex-1 py-3 px-2 text-center text-sm font-medium transition-all relative ${
+                className={`flex-1 py-3 px-1 text-center text-xs font-medium transition-all relative ${
                   activeTab === tab.id
                     ? "text-violet-600"
                     : "text-slate-500 hover:text-slate-700"
@@ -162,8 +196,13 @@ export default function Home() {
               >
                 <span className="text-base block mb-0.5">{tab.icon}</span>
                 {tab.label}
+                {tab.badge !== undefined && tab.badge > 0 && (
+                  <span className="absolute top-1 right-1 bg-violet-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                    {tab.badge}
+                  </span>
+                )}
                 {activeTab === tab.id && (
-                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-0.5 bg-violet-500 rounded-full" />
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-0.5 bg-violet-500 rounded-full" />
                 )}
               </button>
             ))}
@@ -183,47 +222,30 @@ export default function Home() {
             {/* Dashboard */}
             {activeTab === "dashboard" && (
               <div className="space-y-6">
-                {/* Stats */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-                    <div className="text-3xl font-bold text-violet-600">{pendingCount}</div>
-                    <div className="text-sm text-slate-500 mt-1">Pending Items</div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm text-center">
+                    <div className="text-2xl font-bold text-violet-600">{pendingCount}</div>
+                    <div className="text-xs text-slate-500 mt-1">Active</div>
                   </div>
-                  <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
-                    <div className="text-3xl font-bold text-emerald-600">{reports.length}</div>
-                    <div className="text-sm text-slate-500 mt-1">Reports</div>
+                  <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm text-center">
+                    <div className="text-2xl font-bold text-slate-400">{archivedCount}</div>
+                    <div className="text-xs text-slate-500 mt-1">Archived</div>
+                  </div>
+                  <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm text-center">
+                    <div className="text-2xl font-bold text-emerald-600">{reports.length}</div>
+                    <div className="text-xs text-slate-500 mt-1">Reports</div>
                   </div>
                 </div>
 
-                {/* Recent Items */}
                 <div>
                   <h2 className="text-lg font-semibold text-slate-800 mb-3">Recent Items</h2>
                   <div className="space-y-3">
-                    {queueItems.slice(0, 4).map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() => setSelectedItem(item)}
-                        className={`bg-white rounded-xl p-4 border cursor-pointer hover:shadow-md transition-all ${typeConfig[item.type]?.bg || "border-slate-200"}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="text-2xl">{typeConfig[item.type]?.icon}</div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusConfig[item.status]?.bg} ${statusConfig[item.status]?.color}`}>
-                                {item.status}
-                              </span>
-                            </div>
-                            <div className="font-medium text-slate-800 truncate">{item.title}</div>
-                            <div className="text-xs text-slate-500 mt-1">
-                              {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                            </div>
-                          </div>
-                          <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </div>
+                    {activeItems.slice(0, 4).map((item) => (
+                      <ItemCard key={item.id} item={item} typeConfig={typeConfig} statusConfig={statusConfig} onClick={() => setSelectedItem(item)} />
                     ))}
+                    {activeItems.length === 0 && (
+                      <div className="text-center py-8 text-slate-500">No active items</div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -232,7 +254,6 @@ export default function Home() {
             {/* Queue */}
             {activeTab === "queue" && (
               <div>
-                {/* Filters */}
                 <div className="flex gap-2 mb-5 overflow-x-auto pb-1 -mx-4 px-4">
                   {[
                     { id: "all", label: "All", icon: "📋" },
@@ -256,52 +277,34 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* Items */}
                 {filteredItems.length === 0 ? (
                   <div className="text-center py-16">
                     <div className="text-5xl mb-3">✨</div>
-                    <p className="text-slate-500">No items found</p>
+                    <p className="text-slate-500">No active items</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {filteredItems.map((item) => (
-                      <div
-                        key={item.id}
-                        onClick={() => setSelectedItem(item)}
-                        className="bg-white rounded-xl p-4 border border-slate-200 cursor-pointer hover:shadow-md hover:border-violet-200 transition-all"
-                      >
-                        {item.image && (
-                          <img
-                            src={item.image}
-                            alt=""
-                            className="w-full h-40 object-cover rounded-lg mb-3"
-                          />
-                        )}
-                        <div className="flex items-start gap-3">
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${typeConfig[item.type]?.bg}`}>
-                            {typeConfig[item.type]?.icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusConfig[item.status]?.bg} ${statusConfig[item.status]?.color}`}>
-                                {item.status}
-                              </span>
-                              {item.priority && (
-                                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
-                                  {item.priority}
-                                </span>
-                              )}
-                            </div>
-                            <div className="font-semibold text-slate-800">{item.title}</div>
-                            {item.summary && (
-                              <div className="text-sm text-slate-500 mt-1 line-clamp-2">{item.summary}</div>
-                            )}
-                            <div className="text-xs text-slate-400 mt-2">
-                              {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      <ItemCard key={item.id} item={item} typeConfig={typeConfig} statusConfig={statusConfig} onClick={() => setSelectedItem(item)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Archive */}
+            {activeTab === "archive" && (
+              <div>
+                <h2 className="text-lg font-semibold text-slate-800 mb-4">Archived Items</h2>
+                {archivedItems.length === 0 ? (
+                  <div className="text-center py-16">
+                    <div className="text-5xl mb-3">📦</div>
+                    <p className="text-slate-500">No archived items</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {archivedItems.map((item) => (
+                      <ItemCard key={item.id} item={item} typeConfig={typeConfig} statusConfig={statusConfig} onClick={() => setSelectedItem(item)} isArchived />
                     ))}
                   </div>
                 )}
@@ -387,13 +390,14 @@ export default function Home() {
             className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-xl">{typeConfig[selectedItem.type]?.icon}</span>
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusConfig[selectedItem.status]?.bg} ${statusConfig[selectedItem.status]?.color}`}>
-                  {selectedItem.status}
-                </span>
+                {isArchived && (
+                  <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                    Archived
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => setSelectedItem(null)}
@@ -461,13 +465,23 @@ export default function Home() {
                 )}
               </div>
 
-              {selectedItem.status !== "archived" && (
-                <div className="mt-6">
-                  <button className="w-full border-2 border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2">
-                    <span>📦</span> Archive
+              <div className="mt-6">
+                {isArchived ? (
+                  <button 
+                    onClick={() => restoreItem(selectedItem.id)}
+                    className="w-full bg-violet-500 hover:bg-violet-600 text-white py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>↩️</span> Restore to Queue
                   </button>
-                </div>
-              )}
+                ) : (
+                  <button 
+                    onClick={() => archiveItem(selectedItem.id)}
+                    className="w-full border-2 border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span>📦</span> Move to Archive
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -528,6 +542,62 @@ export default function Home() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ItemCard({ 
+  item, 
+  typeConfig, 
+  statusConfig, 
+  onClick,
+  isArchived 
+}: { 
+  item: QueueItem; 
+  typeConfig: Record<string, { icon: string; bg: string }>; 
+  statusConfig: Record<string, { color: string; bg: string }>;
+  onClick: () => void;
+  isArchived?: boolean;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      className={`bg-white rounded-xl p-4 border cursor-pointer hover:shadow-md transition-all ${
+        isArchived ? "border-slate-200 opacity-75" : typeConfig[item.type]?.bg || "border-slate-200"
+      }`}
+    >
+      {item.image && (
+        <img src={item.image} alt="" className="w-full h-40 object-cover rounded-lg mb-3" />
+      )}
+      <div className="flex items-start gap-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${typeConfig[item.type]?.bg}`}>
+          {typeConfig[item.type]?.icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            {isArchived && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                Archived
+              </span>
+            )}
+            {item.priority && !isArchived && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                {item.priority}
+              </span>
+            )}
+          </div>
+          <div className="font-semibold text-slate-800">{item.title}</div>
+          {item.summary && (
+            <div className="text-sm text-slate-500 mt-1 line-clamp-2">{item.summary}</div>
+          )}
+          <div className="text-xs text-slate-400 mt-2">
+            {new Date(item.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          </div>
+        </div>
+        <svg className="w-5 h-5 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </div>
     </div>
   );
 }
