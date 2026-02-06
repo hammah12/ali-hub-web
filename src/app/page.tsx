@@ -461,13 +461,10 @@ export default function Home() {
                 )}
               </div>
 
-              {selectedItem.status === "pending" && (
-                <div className="flex gap-3 mt-6">
-                  <button className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-3 rounded-xl font-semibold transition-colors shadow-lg shadow-emerald-200">
-                    ✓ Approve
-                  </button>
-                  <button className="flex-1 border-2 border-slate-300 text-slate-600 hover:border-red-300 hover:text-red-600 py-3 rounded-xl font-semibold transition-colors">
-                    Archive
+              {selectedItem.status !== "archived" && (
+                <div className="mt-6">
+                  <button className="w-full border-2 border-slate-300 text-slate-600 hover:border-slate-400 hover:bg-slate-50 py-3 rounded-xl font-semibold transition-colors flex items-center justify-center gap-2">
+                    <span>📦</span> Archive
                   </button>
                 </div>
               )}
