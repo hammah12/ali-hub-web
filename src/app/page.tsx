@@ -39,6 +39,11 @@ type DailyLog = {
 
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com/hammah12/ali-hub-data/main";
 const ARCHIVE_KEY = "ali-hub-archived";
+const AUTH_KEY = "ali-hub-auth";
+const LIKED_RECIPES_KEY = "ali-hub-liked-recipes";
+const DISLIKED_RECIPES_KEY = "ali-hub-disliked-recipes";
+const EXPECTED_USERNAME = "hammah1";
+const EXPECTED_PASSWORD = "shah1033";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"dashboard" | "queue" | "archive" | "reports" | "logs">("dashboard");
@@ -47,19 +52,44 @@ export default function Home() {
   const [reports, setReports] = useState<Report[]>([]);
   const [logs, setLogs] = useState<DailyLog[]>([]);
   const [selectedItem, setSelectedItem] = useState<QueueItem | null>(null);
+  const [likedRecipes, setLikedRecipes] = useState<Set<string>>(new Set());
+  const [dislikedRecipes, setDislikedRecipes] = useState<Set<string>>(new Set());
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
   const [selectedLog, setSelectedLog] = useState<DailyLog | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   useEffect(() => {
+    const authed = localStorage.getItem(AUTH_KEY) === "true";
+    if (authed) {
+      setIsAuthorized(true);
+      initializeData();
+    }
+  }, []);
+
+  function initializeData() {
     // Load archived IDs from localStorage
     const saved = localStorage.getItem(ARCHIVE_KEY);
     if (saved) {
       setArchivedIds(new Set(JSON.parse(saved)));
     }
+
+    const liked = localStorage.getItem(LIKED_RECIPES_KEY);
+    if (liked) {
+      setLikedRecipes(new Set(JSON.parse(liked)));
+    }
+
+    const disliked = localStorage.getItem(DISLIKED_RECIPES_KEY);
+    if (disliked) {
+      setDislikedRecipes(new Set(JSON.parse(disliked)));
+    }
+
     loadData();
-  }, []);
+  }
 
   function saveArchivedIds(ids: Set<string>) {
     localStorage.setItem(ARCHIVE_KEY, JSON.stringify([...ids]));
@@ -80,22 +110,63 @@ export default function Home() {
     setSelectedItem(null);
   }
 
+  function saveLikedRecipes(ids: Set<string>) {
+    localStorage.setItem(LIKED_RECIPES_KEY, JSON.stringify([...ids]));
+    setLikedRecipes(ids);
+  }
+
+  function saveDislikedRecipes(ids: Set<string>) {
+    localStorage.setItem(DISLIKED_RECIPES_KEY, JSON.stringify([...ids]));
+    setDislikedRecipes(ids);
+  }
+
+  function likeRecipe(id: string) {
+    const newLiked = new Set(likedRecipes);
+    const newDisliked = new Set(dislikedRecipes);
+    newLiked.add(id);
+    newDisliked.delete(id);
+    saveLikedRecipes(newLiked);
+    saveDislikedRecipes(newDisliked);
+  }
+
+  function dislikeRecipe(id: string) {
+    const newLiked = new Set(likedRecipes);
+    const newDisliked = new Set(dislikedRecipes);
+    newDisliked.add(id);
+    newLiked.delete(id);
+    saveLikedRecipes(newLiked);
+    saveDislikedRecipes(newDisliked);
+  }
+
+  function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (username === EXPECTED_USERNAME && password === EXPECTED_PASSWORD) {
+      localStorage.setItem(AUTH_KEY, "true");
+      setIsAuthorized(true);
+      setLoginError(null);
+      initializeData();
+    } else {
+      setLoginError("Invalid credentials");
+    }
+  }
+
   async function loadData() {
     setLoading(true);
     try {
-      const queueRes = await fetch(`${GITHUB_RAW_BASE}/queue.json`);
+      const cacheBust = `?t=${Date.now()}`;
+      const queueRes = await fetch(`${GITHUB_RAW_BASE}/queue.json${cacheBust}`);
       if (queueRes.ok) {
         const data = await queueRes.json();
         setQueueItems(data.items || []);
       }
 
-      const reportsRes = await fetch(`${GITHUB_RAW_BASE}/reports/index.json`);
+      const reportsRes = await fetch(`${GITHUB_RAW_BASE}/reports/index.json${cacheBust}`);
       if (reportsRes.ok) {
         const data = await reportsRes.json();
         setReports(data.reports || []);
       }
 
-      const logsRes = await fetch(`${GITHUB_RAW_BASE}/memory/index.json`);
+      const logsRes = await fetch(`${GITHUB_RAW_BASE}/memory/index.json${cacheBust}`);
       if (logsRes.ok) {
         const data = await logsRes.json();
         setLogs(data.logs || []);
@@ -156,6 +227,56 @@ export default function Home() {
   };
 
   const isArchived = selectedItem ? archivedIds.has(selectedItem.id) : false;
+
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50">
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-lg shadow-lg shadow-violet-200">
+              🙂
+            </div>
+            <div>
+              <h1 className="text-lg font-bold text-slate-800">Ali Hub Access</h1>
+              <p className="text-xs text-slate-500">Sign in to view your dashboard</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                autoComplete="username"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
+                autoComplete="current-password"
+              />
+            </div>
+            {loginError && (
+              <p className="text-xs text-red-600">{loginError}</p>
+            )}
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-lg bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 transition-colors"
+           >
+              Sign In
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
